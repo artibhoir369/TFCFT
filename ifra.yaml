@@ -1,0 +1,129 @@
+Resources:
+  VpcProdMF:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: VpcProdMF
+
+  PubRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcProdMF
+      Tags:
+        - Key: Name
+          Value: PubRT
+
+  PvtRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VpcProdMF
+      Tags:
+        - Key: Name
+          Value: PvtRT  
+
+  AppSubnet1A:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: ""
+      VpcId: !Ref VpcProdMF
+      MapPublicIpOnLaunch: true
+      CidrBlock: 10.0.1.0/24
+      Tags:
+        - Key: Name
+          Value: AppSubnet1A
+
+  DBSubnet1A:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: ""
+      VpcId: !Ref VpcProdMF
+      CidrBlock: 10.0.7.0/24
+      Tags:
+        - Key: Name
+          Value: DBSubnet1A
+
+  App1AsubnetAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref AppSubnet1A
+      RouteTableId: !Ref PubRT
+  
+  DB1AsubnetAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBSubnet1A
+      RouteTableId: !Ref PvtRT
+      
+  MFigw:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: MFigw
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VpcProdMF
+      InternetGatewayId: !Ref MFigw
+
+  routeName:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PubRT
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MFigw
+
+  PubSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: PubSG
+      GroupDescription: "public sucurity group"
+      VpcId: !Ref VpcProdMF
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0        
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0 
+      Tags:
+        - Key: Name
+          Value: PubSG
+
+  Appserver:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: cloudformationKey
+      ImageId: ami-0aa7d40eeae50c9a9
+      InstanceType: t2.micro
+      Monitoring: true
+      SecurityGroupIds: 
+        - !Ref PubSG
+      SubnetId: !Ref AppSubnet1A
+      UserData: !Base64 |
+        #!/bin/bash -ex
+        yum install httpd -y
+        cd /var/www/html
+        wget https://www.free-css.com/assets/files/free-css-templates/download/page287/cycle.zip
+        unzip cycle.zip
+        rm -f cycle.zip
+        mv html/* .
+        rm -rf html
+        service httpd start
+      Tags:
+        - Key: Name
+          Value: Appserver
